@@ -1,0 +1,2 @@
+import { ShieldCheck } from 'lucide-react';
+export default function Disclaimer() { return <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0"/><span>AI-generated documentation support only. Final clinical interpretation and approval must be performed by a qualified healthcare professional.</span></div>; }

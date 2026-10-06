@@ -1,0 +1,10 @@
+import { CircleDot } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import AppShell from '../layouts/AppShell';
+import PageHeader from '../components/PageHeader';
+import PatientTabs from '../components/PatientTabs';
+import { api } from '../services/api';
+
+const filters=['All','Consultations','Voice Sessions','Symptoms','Diagnoses','Medicines','Lab Tests','Documents'];
+export default function TimelinePage(){const{id=''}=useParams();const[items,setItems]=useState<any[]>([]);const[filter,setFilter]=useState('All');const[error,setError]=useState('');useEffect(()=>{api<any[]>(`/patients/${id}/timeline`).then(setItems).catch((e:any)=>setError(e.message))},[id]);const shown=filter==='All'?items:items.filter(x=>x.type===filter);return <AppShell><PageHeader eyebrow="Longitudinal record" title="Medical Timeline" text="Chronological view of consultations, voice sessions, symptoms, diagnoses, medications, laboratory results and documents."/><PatientTabs id={id}/>{error&&<div className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}<div className="mb-5 flex flex-wrap gap-2">{filters.map(f=><button key={f} onClick={()=>setFilter(f)} className={f===filter?'btn-primary':'btn-secondary'}>{f}</button>)}</div><div className="card p-5"><div className="relative ml-3 border-l border-slate-200 pl-7">{shown.length===0?<div className="py-10 text-sm text-slate-400">No timeline events for this filter.</div>:shown.map((e:any)=><div key={e.id} className="relative pb-7"><div className="absolute -left-[35px] top-1 grid h-4 w-4 place-items-center rounded-full bg-white ring-4 ring-cyan-50"><CircleDot className="h-4 w-4 text-cyan-700"/></div><div className="text-xs font-bold uppercase tracking-wider text-cyan-700">{new Date(e.date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})} • {e.type}</div><div className="mt-1 text-base font-bold text-slate-900">{e.title}</div><div className="mt-1 text-sm leading-6 text-slate-500">{e.detail}</div></div>)}</div></div></AppShell>}

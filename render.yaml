@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: medibridge-ai-api
+    runtime: node
+    plan: free
+    healthCheckPath: /api/health
+    buildCommand: npm install --include=dev --prefix backend && npm --prefix backend run prisma:generate:prod && npm --prefix backend run build
+    startCommand: npm --prefix backend run db:push:prod && npm --prefix backend run seed:prod && npm --prefix backend run start:prod
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: NODE_ENV
+        value: production
+      - key: AI_PROVIDER
+        value: mock
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+  - type: web
+    name: medibridge-ai-web
+    runtime: static
+    buildCommand: npm install --include=dev --prefix frontend && npm --prefix frontend run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -459,26 +459,87 @@ export default async function handler(req, context) {
     if (path === '/documents/extract' && req.method === 'POST') {
       const today = new Date().toISOString().split('T')[0];
       const targetPatient = DEMO_PATIENTS[0];
+      let sampleId = '';
+      let text = '';
+      let fileName = '';
 
-      const extraction = {
-        patientName: targetPatient.name,
-        doctorName: 'Dr. Priya Raman, MD',
-        hospital: 'Apollo Hospitals / MediBridge Network',
-        date: today,
-        diagnosisRecorded: ['Type 2 Diabetes Mellitus', 'Acute Pyrexia'],
-        medicines: [
-          { name: 'Metformin HCl', dosage: '500 mg', frequency: 'Twice daily (after food)', duration: '30 days' },
-          { name: 'Amoxicillin + Clavulanate', dosage: '625 mg', frequency: 'Twice daily (5 days)', duration: '5 days' },
-          { name: 'Paracetamol (Dolo 650)', dosage: '650 mg', frequency: 'Thrice daily if fever >100°F', duration: '3 days' },
-        ],
-        labTests: [
-          { name: 'HbA1c', value: '7.8', unit: '%', referenceRange: '<5.7% Normal' },
-          { name: 'Fasting Blood Glucose', value: '142', unit: 'mg/dL', referenceRange: '70-99 mg/dL' },
-        ],
-        allergies: [],
-        followUpDate: '2026-09-20',
-        note: 'Clinical prescription and lab panel processed. Real-time safety matrix evaluated against EHR record.',
-      };
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const body = await req.json().catch(() => ({}));
+        sampleId = body.sampleId || '';
+        text = body.text || '';
+      } else if (contentType.includes('multipart/form-data')) {
+        const fd = await req.formData().catch(() => null);
+        if (fd) {
+          const file = fd.get('document');
+          if (file && typeof file === 'object') {
+            fileName = file.name || '';
+          }
+          sampleId = String(fd.get('sampleId') || '');
+          text = String(fd.get('text') || '');
+        }
+      }
+
+      let extraction;
+      const lower = (sampleId + ' ' + fileName + ' ' + text).toLowerCase();
+
+      if (lower.includes('warfarin') || lower.includes('aspirin') || sampleId === 'warfarin-hazard') {
+        extraction = {
+          patientName: targetPatient.name,
+          doctorName: 'Dr. Arvind Swaminathan, MD, DM (Cardiology)',
+          hospital: 'Madras Heart Institute, Chennai',
+          date: today,
+          diagnosisRecorded: ['Deep Vein Thrombosis Prophylaxis', 'Severe Knee Arthralgia'],
+          medicines: [
+            { name: 'Warfarin Sodium', dosage: '2.5 mg', frequency: 'Once daily (7 PM, per INR)', duration: '30 days' },
+            { name: 'Ecosprin (Aspirin)', dosage: '75 mg', frequency: 'Once daily (after lunch)', duration: '30 days' },
+            { name: 'Ibuprofen', dosage: '400 mg', frequency: 'Twice daily (after food)', duration: '5 days' },
+          ],
+          labTests: [{ name: 'PT / INR', value: '2.4', unit: 'INR', referenceRange: '2.0 - 3.0 Therapeutic' }],
+          allergies: [],
+          followUpDate: '2026-10-22',
+          note: 'Multi-drug therapy analyzed. CRITICAL DRUG-DRUG INTERACTION: Warfarin combined with Aspirin and Ibuprofen impairs primary and secondary hemostasis.',
+        };
+      } else if (lower.includes('metformin') || sampleId === 'clean-diabetic') {
+        extraction = {
+          patientName: targetPatient.name,
+          doctorName: 'Dr. Priya Raman, MBBS, MD',
+          hospital: 'MediBridge Primary Healthcare Clinic',
+          date: today,
+          diagnosisRecorded: ['Type 2 Diabetes Mellitus', 'Mild Dyspepsia'],
+          medicines: [
+            { name: 'Metformin HCl', dosage: '500 mg', frequency: 'Twice daily (with meals)', duration: '30 days' },
+            { name: 'Pantoprazole', dosage: '40 mg', frequency: 'Once daily (empty stomach, morning)', duration: '14 days' },
+          ],
+          labTests: [
+            { name: 'HbA1c', value: '7.4', unit: '%', referenceRange: '<5.7% Normal' },
+            { name: 'Fasting Blood Glucose', value: '132', unit: 'mg/dL', referenceRange: '70-99 mg/dL' },
+          ],
+          allergies: [],
+          followUpDate: '2026-11-05',
+          note: 'Routine chronic prescription verified safe. 100/100 Safety Score.',
+        };
+      } else {
+        // Default / Case 1: Penicillin Allergy Interception (Amoxicillin)
+        extraction = {
+          patientName: targetPatient.name,
+          doctorName: 'Dr. Priya Raman, MBBS, MD',
+          hospital: 'Apollo Multispecialty Hospitals, Chennai',
+          date: today,
+          diagnosisRecorded: ['Acute Streptococcal Pharyngitis', 'Pyrexia'],
+          medicines: [
+            { name: 'Amoxicillin + Clavulanate (Augmentin)', dosage: '625 mg', frequency: 'Twice daily (after food)', duration: '5 days' },
+            { name: 'Paracetamol (Dolo 650)', dosage: '650 mg', frequency: 'Thrice daily if fever >100°F', duration: '3 days' },
+            { name: 'Pantoprazole', dosage: '40 mg', frequency: 'Once daily (empty stomach, morning)', duration: '5 days' },
+          ],
+          labTests: [
+            { name: 'Fasting Blood Sugar', value: '138', unit: 'mg/dL', referenceRange: '70-99 mg/dL' },
+          ],
+          allergies: [{ substance: 'Penicillin', reaction: 'Severe anaphylactic urticaria & bronchospasm' }],
+          followUpDate: '2026-10-15',
+          note: 'Prescription scanned via Optical Vision AI. CRITICAL CONTRAINDICATION: Patient EHR records severe Penicillin allergy. Amoxicillin cross-reacts with Penicillin beta-lactam core.',
+        };
+      }
 
       const prescribedMedNames = extraction.medicines.map((m) => m.name);
       const existingMeds = targetPatient.patientMedications.map((m) => m.medication.name);
@@ -489,7 +550,7 @@ export default async function handler(req, context) {
       return json({
         document: {
           id: 'doc-live-' + Date.now(),
-          originalName: 'Live_Captured_Prescription.jpg',
+          originalName: fileName || (sampleId ? `${sampleId}.pdf` : 'Live_Captured_Prescription.jpg'),
           documentType: 'PRESCRIPTION',
           status: 'PENDING_REVIEW',
         },

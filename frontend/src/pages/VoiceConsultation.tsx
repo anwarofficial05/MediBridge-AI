@@ -21,6 +21,7 @@ import {
   Trash2,
   User,
   Volume2,
+  VolumeX,
   WandSparkles,
   Zap,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ import SafetyAlertHUD from '../components/SafetyAlertHUD';
 import { api } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import type { Extraction, Patient } from '../types';
+import { speakText, stopSpeaking, testSpeakerAudio } from '../utils/speech';
 
 const langCodes: Record<string, string> = {
   Tamil: 'ta-IN',
@@ -102,6 +104,8 @@ export default function VoiceConsultation() {
   const [activeTab, setActiveTab] = useState<'soap' | 'entities' | 'safety'>('soap');
   const [simulating, setSimulating] = useState(false);
   const [activeDialogueIndex, setActiveDialogueIndex] = useState(-1);
+  const [testingAudio, setTestingAudio] = useState(false);
+  const stopSimulationRef = useRef(false);
 
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -279,39 +283,56 @@ export default function VoiceConsultation() {
     }
   };
 
+  const handleTestAudio = async () => {
+    setTestingAudio(true);
+    setNotice({ kind: 'info', text: 'Testing speaker output at 100% volume...' });
+    const result = await testSpeakerAudio();
+    setTestingAudio(false);
+    setNotice({ kind: 'success', text: `${result} — Laptop audio verified for judges.` });
+  };
+
+  const stopJudgeSimulation = () => {
+    stopSimulationRef.current = true;
+    stopSpeaking();
+    setSimulating(false);
+    setActiveDialogueIndex(-1);
+    setNotice({ kind: 'info', text: 'Consultation encounter paused.' });
+  };
+
   // Run 60-Second Guided Live Judge Simulation
   const runJudgeSimulation = async () => {
     if (listening) stopSpeech();
-    window.speechSynthesis?.cancel();
+    stopSpeaking();
+    stopSimulationRef.current = false;
     setSimulating(true);
     setExtraction(null);
-    setNotice({ kind: 'info', text: 'Playing ambient clinical doctor-patient dialogue simulation...' });
+    setNotice({ kind: 'info', text: 'Playing ambient clinical doctor-patient dialogue simulation (100% volume)...' });
 
     // Step through each line of dialogue with audio speech synthesis
     for (let i = 0; i < selectedScenario.dialogue.length; i++) {
+      if (stopSimulationRef.current) break;
       setActiveDialogueIndex(i);
       const line = selectedScenario.dialogue[i];
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        const u = new SpeechSynthesisUtterance(line.text);
-        u.lang = line.text.match(/[\u0B80-\u0BFF]/) ? 'ta-IN' : 'en-IN';
-        u.rate = 1.0;
-        u.pitch = line.speaker === 'Doctor' ? 0.95 : 1.1;
-        window.speechSynthesis.speak(u);
-        // Wait for utterance to finish
-        await new Promise((res) => {
-          u.onend = res;
-          u.onerror = res;
-          setTimeout(res, 3500); // safety fallback
-        });
-      } else {
-        await new Promise((res) => setTimeout(res, 1200));
-      }
+      const isTamil = Boolean(line.text.match(/[\u0B80-\u0BFF]/));
+
+      await speakText(line.text, {
+        lang: isTamil ? 'ta' : 'en',
+        rate: 0.88, // Deliberate pacing for judges
+        volume: 1.0, // 100% Volume
+        speaker: line.speaker === 'Doctor' ? 'Doctor' : 'Patient',
+        pitch: line.speaker === 'Doctor' ? 0.95 : 1.1,
+      });
+
+      if (stopSimulationRef.current) break;
+      await new Promise((res) => setTimeout(res, 600));
     }
 
-    setSimulating(false);
-    setActiveDialogueIndex(-1);
-    // Automatically trigger extraction & SOAP generation!
-    await analyzeConsultation(selectedScenario.fullTranscript);
+    if (!stopSimulationRef.current) {
+      setSimulating(false);
+      setActiveDialogueIndex(-1);
+      // Automatically trigger extraction & SOAP generation!
+      await analyzeConsultation(selectedScenario.fullTranscript);
+    }
   };
 
   // Save to EHR
@@ -354,9 +375,9 @@ export default function VoiceConsultation() {
   };
 
   // Speak patient instructions in Tamil or English
-  const speakInstructions = (lang: 'ta' | 'en') => {
-    if (!extraction?.medications?.length || typeof window === 'undefined') return;
-    window.speechSynthesis?.cancel();
+  const speakInstructions = async (lang: 'ta' | 'en') => {
+    if (!extraction?.medications?.length) return;
+    stopSpeaking();
 
     let text = '';
     if (lang === 'ta') {
@@ -375,10 +396,12 @@ export default function VoiceConsultation() {
         '. If any allergic rash or symptoms occur, contact clinical hotline immediately.';
     }
 
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang === 'ta' ? 'ta-IN' : 'en-IN';
-    u.rate = 0.95;
-    window.speechSynthesis?.speak(u);
+    await speakText(text, {
+      lang,
+      rate: 0.88,
+      volume: 1.0,
+      speaker: 'Doctor',
+    });
   };
 
   return (
@@ -415,20 +438,33 @@ export default function VoiceConsultation() {
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
               type="button"
-              onClick={runJudgeSimulation}
-              disabled={simulating || busy}
-              className="btn-primary w-full md:w-auto bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 font-black px-5 py-2.5 shadow-md flex items-center justify-center gap-2"
+              onClick={handleTestAudio}
+              disabled={testingAudio || simulating}
+              className="rounded-xl border border-cyan-400/50 bg-cyan-900/60 hover:bg-cyan-800 text-cyan-100 px-3.5 py-2 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+              title="Test system speaker volume at 100%"
             >
-              {simulating ? (
-                <>
-                  <Activity className="h-4 w-4 animate-spin" /> Playing Encounter...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 fill-slate-950" /> ▶️ Run Live Doctor Encounter Demo
-                </>
-              )}
+              <Volume2 className="h-4 w-4 text-cyan-300 animate-pulse" />
+              {testingAudio ? 'Testing Speakers...' : '🔊 Test Speaker (100% Volume)'}
             </button>
+
+            {simulating ? (
+              <button
+                type="button"
+                onClick={stopJudgeSimulation}
+                className="btn-secondary w-full md:w-auto bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 shadow-md flex items-center justify-center gap-2 border-0"
+              >
+                <VolumeX className="h-4 w-4" /> ⏹️ Stop Voice Encounter
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={runJudgeSimulation}
+                disabled={busy}
+                className="btn-primary w-full md:w-auto bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 font-black px-5 py-2.5 shadow-md flex items-center justify-center gap-2"
+              >
+                <Play className="h-4 w-4 fill-slate-950" /> ▶️ Run Live Doctor Encounter Demo
+              </button>
+            )}
           </div>
         </div>
 

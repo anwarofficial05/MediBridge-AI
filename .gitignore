@@ -8,3 +8,4 @@ prisma/dev.db-journal
 uploads/*
 !uploads/.gitkeep
 .DS_Store
+*.tsbuildinfo

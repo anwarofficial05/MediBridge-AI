@@ -44,6 +44,13 @@ const documentExtractionSchema = z.object({
   })).max(50).default([]),
   followUpDate: textField.default(''),
   note: z.string().trim().max(2000).default(''),
+  safetyEvaluation: z.object({
+    hasCriticalAlerts: z.boolean(),
+    interactionAlerts: z.array(z.any()),
+    allergyAlerts: z.array(z.any()),
+    safetyScore: z.number(),
+    safetySummary: z.string(),
+  }).optional(),
 });
 
 const storage = multer.diskStorage({
@@ -54,8 +61,12 @@ const allowed = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/we
 const upload = multer({
   storage,
   limits: { fileSize: env.MAX_FILE_SIZE_MB * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(allowed.has(file.mimetype) ? null : new Error('Only PDF/JPG/PNG/WEBP files are allowed'), allowed.has(file.mimetype)),
-});
+  fileFilter: (_req, file, cb) => {
+    if (!allowed.has(file.mimetype)) {
+      return cb(new Error('Only PDF/JPG/PNG/WEBP files are allowed'));
+    }
+    cb(null, true);
+  },});
 
 function safeUnlink(filePath?: string) {
   if (!filePath) return;
@@ -105,7 +116,8 @@ router.post('/extract', upload.single('document'), async (req, res) => {
       return res.status(400).json({ message: 'File content does not match the declared PDF/image type' });
     }
 
-    const extraction = documentExtractionSchema.parse(await extractDocumentData(req.file.originalname));
+    const rawExtraction = await extractDocumentData(req.file.path, req.file.mimetype, req.file.originalname, patientId);
+    const extraction = documentExtractionSchema.parse(rawExtraction);
     const documentDate = extraction.date && !Number.isNaN(Date.parse(extraction.date)) ? new Date(extraction.date) : undefined;
     const doc = await prisma.medicalDocument.create({
       data: {
@@ -129,7 +141,8 @@ router.post('/extract', upload.single('document'), async (req, res) => {
 });
 
 router.get('/:id/file', async (req, res) => {
-  const doc = await prisma.medicalDocument.findUnique({ where: { id: req.params.id } });
+  const docId = String(req.params.id);
+  const doc = await prisma.medicalDocument.findUnique({ where: { id: docId } });
   if (!doc) return res.status(404).json({ message: 'Document not found' });
   if (!(await canAccessPatient(req.authUser!, doc.patientId))) return res.status(403).json({ message: 'Forbidden' });
   const resolvedPath = resolveStoredFilePath(doc.filePath);
@@ -141,7 +154,8 @@ router.get('/:id/file', async (req, res) => {
 });
 
 router.put('/:id/extracted', async (req, res) => {
-  const doc = await prisma.medicalDocument.findUnique({ where: { id: req.params.id }, include: { extractedData: true } });
+  const docId = String(req.params.id);
+  const doc = await prisma.medicalDocument.findUnique({ where: { id: docId }, include: { extractedData: true } });
   if (!doc?.extractedData) return res.status(404).json({ message: 'Document extraction not found' });
   if (!(await canAccessPatient(req.authUser!, doc.patientId))) return res.status(403).json({ message: 'Forbidden' });
   if (doc.status === 'APPROVED' || doc.extractedData.approved) return res.status(409).json({ message: 'Approved document extraction is locked from further edits' });
@@ -156,7 +170,8 @@ router.put('/:id/extracted', async (req, res) => {
 });
 
 router.post('/:id/approve', allowRoles('DOCTOR', 'ADMIN'), async (req, res) => {
-  const doc = await prisma.medicalDocument.findUnique({ where: { id: req.params.id }, include: { extractedData: true } });
+  const docId = String(req.params.id);
+  const doc = await prisma.medicalDocument.findUnique({ where: { id: docId }, include: { extractedData: true } });
   if (!doc?.extractedData) return res.status(404).json({ message: 'Document extraction not found' });
   if (doc.status === 'APPROVED' || doc.extractedData.approved) return res.status(409).json({ message: 'Document is already approved' });
 

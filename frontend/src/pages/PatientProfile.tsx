@@ -1,10 +1,11 @@
-import { Activity, AlertTriangle, CalendarDays, CheckCircle2, FileText, Languages, Mic2, Pill, Plus, Stethoscope, TestTube2 } from 'lucide-react';
+import { Activity, AlertTriangle, CalendarDays, CheckCircle2, FileText, Languages, Mic2, Pill, Plus, Stethoscope, TestTube2, QrCode } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '../layouts/AppShell';
 import PageHeader from '../components/PageHeader';
 import PatientTabs from '../components/PatientTabs';
 import Disclaimer from '../components/Disclaimer';
+import EmergencyHealthCardModal from '../components/EmergencyHealthCardModal';
 import { api, apiBlob } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import type { Patient } from '../types';
@@ -18,6 +19,7 @@ export default function PatientProfile(){
   const [loading,setLoading]=useState(true);
   const [msg,setMsg]=useState('');
   const [error,setError]=useState('');
+  const [showCard,setShowCard]=useState(false);
 
   const load=()=>{
     setLoading(true); setError('');
@@ -30,7 +32,15 @@ export default function PatientProfile(){
   if(!p)return <AppShell><div>Patient not found.</div></AppShell>;
 
   return <AppShell>
-    <PageHeader eyebrow="Unified patient view" title={p.name} text={`${p.patientCode} • ${p.age||'Age not recorded'}${p.gender?` • ${p.gender}`:''} • Preferred language: ${p.preferredLanguage}`} action={<span className="badge">Synthetic demo patient</span>}/>
+    <PageHeader eyebrow="Unified patient view" title={p.name} text={`${p.patientCode} • ${p.age||'Age not recorded'}${p.gender?` • ${p.gender}`:''} • Preferred language: ${p.preferredLanguage}`} action={
+      <div className="flex items-center gap-2">
+        <button onClick={()=>setShowCard(true)} className="btn-secondary text-xs flex items-center gap-1.5 border-rose-300 text-rose-700 bg-rose-50 hover:bg-rose-100">
+          <QrCode className="h-4 w-4" /> Emergency QR Pass
+        </button>
+        <span className="badge">Synthetic demo patient</span>
+      </div>
+    }/>
+    {showCard && <EmergencyHealthCardModal patientId={p.id} onClose={()=>setShowCard(false)} />}
     <PatientTabs id={p.id}/>
     {tab==='overview'&&<Overview p={p}/>} 
     {tab==='voice'&&<VoiceSessions p={p} onDone={()=>{load();setMsg('Voice session approved and added to the EHR.')}}/>}

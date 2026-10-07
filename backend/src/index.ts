@@ -9,15 +9,34 @@ import statsRoutes from './routes/stats.routes.js';
 import { errorHandler } from './middleware/error.js';
 import { env } from './utils/env.js';
 import { prisma } from './utils/prisma.js';
+import { isGeminiConfigured } from './services/gemini.service.js';
 
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
-app.use(cors({ origin: env.FRONTEND_URL.split(',').map(s => s.trim()), credentials: true }));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    const allowed = env.FRONTEND_URL.split(',').map(s => s.trim());
+    if (allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('CORS not allowed for this origin'));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'MediBridge AI API', aiProvider: env.AI_PROVIDER }));
+app.get('/api/health', (_req, res) => res.json({ 
+  status: 'ok', 
+  service: 'MediBridge AI API', 
+  aiProvider: env.AI_PROVIDER, 
+  geminiActive: isGeminiConfigured(),
+  mode: isGeminiConfigured() ? 'Gemini 1.5 Multimodal Vision & Voice' : 'Intelligent Local Clinical Engine (Offline Safe)'
+}));
 app.use('/api/auth', authRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/voice', voiceRoutes);

@@ -13,7 +13,7 @@ export default function AdminDashboard(){
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
   const load=()=>api('/stats/admin').then(setD).catch((e:any)=>setError(e.message));
-  useEffect(load,[]);
+  useEffect(() => { load(); }, []);
 
   const createClinician=async(e:React.FormEvent)=>{
     e.preventDefault(); setBusy(true); setError(''); setNotice('');

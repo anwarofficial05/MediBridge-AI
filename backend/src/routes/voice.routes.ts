@@ -31,6 +31,13 @@ const extractionSchema = z.object({
   })).max(30).default([]),
   relevantHistory: z.array(z.string().trim().max(1000)).max(50).default([]),
   followUpQuestions: z.array(z.string().trim().max(500)).max(20).default([]),
+  safetyEvaluation: z.object({
+    hasCriticalAlerts: z.boolean(),
+    interactionAlerts: z.array(z.any()),
+    allergyAlerts: z.array(z.any()),
+    safetyScore: z.number(),
+    safetySummary: z.string(),
+  }).optional(),
 });
 
 async function canAccessPatient(user: NonNullable<Express.Request['authUser']>, patientId: string) {
@@ -124,15 +131,27 @@ router.post('/extract', async (req, res) => {
   const body = z.object({
     text: z.string().trim().min(2).max(10000),
     language: languageSchema.default('English'),
+    patientId: z.string().optional(),
   }).parse(req.body);
-  const result = await extractMedicalInfo(body.text, body.language);
+
+  let existingAllergies: string[] = [];
+  if (body.patientId) {
+    const p = await prisma.patient.findUnique({
+      where: { id: body.patientId },
+      include: { allergies: true },
+    });
+    if (p) existingAllergies = p.allergies.map((a) => a.substance);
+  }
+
+  const result = await extractMedicalInfo(body.text, body.language, existingAllergies);
   res.json({ ...result, disclaimer: 'AI-generated documentation support. Verify before saving to the medical record.' });
 });
 
 router.get('/patient/:patientId', async (req, res) => {
-  if (!(await canAccessPatient(req.authUser!, req.params.patientId))) return res.status(403).json({ message: 'Forbidden' });
+  const patientId = String(req.params.patientId);
+  if (!(await canAccessPatient(req.authUser!, patientId))) return res.status(403).json({ message: 'Forbidden' });
   const sessions = await prisma.voiceSession.findMany({
-    where: { patientId: req.params.patientId },
+    where: { patientId },
     orderBy: { createdAt: 'desc' },
     take: 30,
   });
@@ -174,7 +193,8 @@ router.post('/save', async (req, res) => {
 });
 
 router.post('/:id/approve', allowRoles('DOCTOR', 'ADMIN'), async (req, res) => {
-  const existing = await prisma.voiceSession.findUnique({ where: { id: req.params.id } });
+  const sessionId = String(req.params.id);
+  const existing = await prisma.voiceSession.findUnique({ where: { id: sessionId } });
   if (!existing) return res.status(404).json({ message: 'Voice session not found' });
   if (existing.approved) return res.status(409).json({ message: 'Voice session is already approved' });
 

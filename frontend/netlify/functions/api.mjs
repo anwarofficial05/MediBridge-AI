@@ -294,6 +294,66 @@ export default async function handler(req, context) {
       return json({ token: 'mb_demo_token_' + Date.now(), user });
     }
 
+    // 2b. Auth: Register (Create Patient Account)
+    if (path === '/auth/register' && req.method === 'POST') {
+      const body = await req.json().catch(() => ({}));
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const preferredLanguage = String(body.preferredLanguage || 'English');
+
+      if (!name || !email) {
+        return json({ message: 'Name and email are required' }, 400);
+      }
+
+      const newId = 'pat-' + Date.now();
+      const patientCode = 'MB-P-' + Math.floor(1000 + Math.random() * 9000);
+
+      const newPatient = {
+        id: newId,
+        patientCode,
+        name,
+        age: 24,
+        gender: 'Not specified',
+        preferredLanguage,
+        phone: '+91 98400 12345',
+        allergies: [],
+        diagnoses: [],
+        patientMedications: [],
+        symptoms: [],
+        labResults: [],
+        consultations: [],
+        medicalDocuments: [],
+        voiceSessions: [],
+        clinicalSummaries: [],
+      };
+
+      DEMO_PATIENTS.unshift(newPatient);
+
+      const newUser = {
+        id: 'usr-' + Date.now(),
+        name,
+        email,
+        role: 'PATIENT',
+        patientId: newId,
+      };
+
+      DEMO_USERS[email] = newUser;
+      const usernameKey = email.split('@')[0];
+      if (usernameKey) {
+        DEMO_USERS[usernameKey] = newUser;
+      }
+
+      return json(
+        {
+          token: 'mb_demo_token_' + Date.now(),
+          user: newUser,
+          patient: newPatient,
+          message: 'Patient account created successfully.',
+        },
+        201
+      );
+    }
+
     // 3. Auth: Current user
     if (path === '/auth/me') {
       return json(DEMO_USERS['doctor@medibridge.ai']);

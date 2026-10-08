@@ -104,20 +104,63 @@ const EXTENSIVE_MEDICATIONS = [
   'Levothyroxine', 'Thyronorm', 'Metoprolol', 'Bisoprolol', 'Rosuvastatin', 'Fluoxetine',
 ];
 
+const TAMIL_MEDICATION_MAP: Array<{ pattern: RegExp; name: string; defaultDose?: string; defaultFreq?: string }> = [
+  { pattern: /metformin|மெட்ஃபோர்மின்|மெட்பார்மின்|கிளைகோமெட்/i, name: 'Metformin', defaultDose: '500 mg', defaultFreq: 'Twice daily' },
+  { pattern: /amoxicillin|amox|அமாக்சிசிலின்|அமாக்சிலின்|ஆக்மென்டின்/i, name: 'Amoxicillin', defaultDose: '500 mg', defaultFreq: 'Twice daily' },
+  { pattern: /paracetamol|dolo|crocin|calpol|பாராசிட்டமால்|டோலோ|கால்பால்/i, name: 'Paracetamol', defaultDose: '650 mg', defaultFreq: 'Thrice daily' },
+  { pattern: /aspirin|ecosprin|ஆஸ்பிரின்|எக்கோஸ்பிரின்/i, name: 'Aspirin', defaultDose: '75 mg', defaultFreq: 'Once daily' },
+  { pattern: /warfarin|coumadin|வார்ஃபரின்|வார்ஃபாரின்/i, name: 'Warfarin', defaultDose: '2.5 mg', defaultFreq: 'Once daily' },
+  { pattern: /pantoprazole|pan\s*40|பான்டோப்ராசோல்|பான்\s*40/i, name: 'Pantoprazole', defaultDose: '40 mg', defaultFreq: 'Once daily' },
+  { pattern: /ibuprofen|brufen|combiflam|ஐபூப்ரூஃபன்|ப்ரூஃபென்/i, name: 'Ibuprofen', defaultDose: '400 mg', defaultFreq: 'Twice daily' },
+  { pattern: /asthalin|salbutamol|அஸ்தாலின்|இன்ஹேலர்/i, name: 'Asthalin', defaultDose: '100 mcg', defaultFreq: '2 puffs PRN' },
+];
+
 function extractKnownMedications(text: string): StructuredMedicalInfo['medications'] {
-  return EXTENSIVE_MEDICATIONS.filter((name) => new RegExp(`\\b${name}\\b`, 'i').test(text)).map((name) => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const near = text.match(new RegExp(`${escaped}.{0,50}`, 'i'))?.[0] || '';
-    const dosage = near.match(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|units?|puffs?)\b/i)?.[0];
-    const frequency = near.match(/\b(?:once|twice|thrice|1-0-1|1-1-1|0-1-0|0-0-1)\s+(?:a\s+)?day\b|\b(?:daily|nightly|morning|evening|after\s+food|empty\s+stomach)\b/i)?.[0];
-    return { name, ...(dosage ? { dosage } : {}), ...(frequency ? { frequency } : {}) };
-  });
+  const result: StructuredMedicalInfo['medications'] = [];
+  const added = new Set<string>();
+
+  // Check Tamil and colloquial brand mappings first
+  for (const item of TAMIL_MEDICATION_MAP) {
+    if (item.pattern.test(text)) {
+      added.add(item.name.toLowerCase());
+      const near = text.match(new RegExp(`(?:${item.pattern.source}).{0,50}`, 'i'))?.[0] || '';
+      const dosage = near.match(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|units?|puffs?)\b/i)?.[0] || item.defaultDose;
+      const frequency = near.match(/\b(?:once|twice|thrice|1-0-1|1-1-1|0-1-0|0-0-1)\s+(?:a\s+)?day\b|\b(?:daily|nightly|morning|evening|after\s+food|empty\s+stomach)\b/i)?.[0] || item.defaultFreq;
+      result.push({ name: item.name, ...(dosage ? { dosage } : {}), ...(frequency ? { frequency } : {}) });
+    }
+  }
+
+  // Check general extensive list
+  for (const name of EXTENSIVE_MEDICATIONS) {
+    if (!added.has(name.toLowerCase()) && new RegExp(`\\b${name}\\b`, 'i').test(text)) {
+      added.add(name.toLowerCase());
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const near = text.match(new RegExp(`${escaped}.{0,50}`, 'i'))?.[0] || '';
+      const dosage = near.match(/\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|units?|puffs?)\b/i)?.[0];
+      const frequency = near.match(/\b(?:once|twice|thrice|1-0-1|1-1-1|0-1-0|0-0-1)\s+(?:a\s+)?day\b|\b(?:daily|nightly|morning|evening|after\s+food|empty\s+stomach)\b/i)?.[0];
+      result.push({ name, ...(dosage ? { dosage } : {}), ...(frequency ? { frequency } : {}) });
+    }
+  }
+
+  return result;
 }
 
 function extractAllergies(text: string) {
+  const list: Array<{ substance: string; reaction?: string }> = [];
+  if (/penicillin|பெனிசிலின்|பென்சிலின்/i.test(text)) {
+    list.push({ substance: 'Penicillin', reaction: 'Severe allergic rash / anaphylaxis risk' });
+  }
+  if (/sulfa|சல்ஃபா/i.test(text)) {
+    list.push({ substance: 'Sulfa', reaction: 'Severe allergic reaction' });
+  }
   const match = text.match(/allerg(?:y|ic)\s+(?:to\s+)?([^,.;]+?)(?=\s+(?:and|but|with)\b|[,.;]|$)/i);
-  if (!match?.[1]) return [];
-  return [{ substance: match[1].trim().slice(0, 120) }];
+  if (match?.[1]) {
+    const sub = match[1].trim().slice(0, 120);
+    if (!list.some(a => a.substance.toLowerCase() === sub.toLowerCase())) {
+      list.push({ substance: sub });
+    }
+  }
+  return list;
 }
 
 export async function extractMedicalInfo(

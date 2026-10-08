@@ -473,43 +473,118 @@ export default async function handler(req, context) {
       const targetPatient = DEMO_PATIENTS.find((p) => p.id === patientId) || DEMO_PATIENTS[0];
 
       const symptoms = [];
-      if (/fever|காய்ச்சல்|bukhar/i.test(text)) symptoms.push({ name: 'Fever', duration: '3 days', severity: 'Moderate' });
-      if (/breath|moochu|saans/i.test(text)) symptoms.push({ name: 'Breathing difficulty', duration: '1 day', severity: 'Moderate' });
-      if (/cough|irumal|khansi/i.test(text)) symptoms.push({ name: 'Cough', duration: '2 days', severity: 'Mild' });
-      if (/headache|thalai/i.test(text)) symptoms.push({ name: 'Headache', duration: '2 days', severity: 'Severe' });
+      // Fever
+      if (/fever|காய்ச்சல்|சுரம்|ஜுரம்|சூடு|kaaychal|kaychal|juram|bukhar/i.test(text)) {
+        symptoms.push({ name: 'Fever (காய்ச்சல்)', duration: '3 days', severity: 'Moderate' });
+      }
+      // Cough
+      if (/cough|irumal|இருமல்|இருமுது|khansi/i.test(text)) {
+        symptoms.push({ name: 'Cough (இருமல்)', duration: '2 days', severity: 'Mild' });
+      }
+      // Cold / Congestion
+      if (/cold|sali|சளி|ஜலதோஷம்|மூக்கடைப்பு/i.test(text)) {
+        symptoms.push({ name: 'Cold & Congestion (சளி)', duration: '3 days', severity: 'Mild' });
+      }
+      // Sore Throat
+      if (/throat|thondai|தொண்டை|தொண்டை\s*வலி|sore\s*throat/i.test(text)) {
+        symptoms.push({ name: 'Sore Throat (தொண்டை வலி)', duration: '2 days', severity: 'Moderate' });
+      }
+      // Breathing difficulty
+      if (/breath|moochu|மூச்சு|திணறல்|வாங்குது|இளைப்பு|saans|dyspnea/i.test(text)) {
+        symptoms.push({ name: 'Breathing difficulty (மூச்சு திணறல்)', duration: '1 day', severity: 'Severe' });
+      }
+      // Headache
+      if (/headache|thalai|தலைவலி|தலை\s*பாரம்|தலை\s*வலி/i.test(text)) {
+        symptoms.push({ name: 'Headache (தலைவலி)', duration: '2 days', severity: 'Moderate' });
+      }
+      // Body pain / Myalgia
+      if (/body\s*pain|udal|odambu|உடம்பு\s*வலி|உடல்\s*வலி|அசதி/i.test(text)) {
+        symptoms.push({ name: 'Body Pain / Myalgia (உடம்பு வலி)', duration: '3 days', severity: 'Moderate' });
+      }
+      // Chest pain
+      if (/chest\s*pain|nenju|நெஞ்சு\s*வலி|மார்பு\s*வலி/i.test(text)) {
+        symptoms.push({ name: 'Chest Pain (நெஞ்சு வலி)', duration: '1 day', severity: 'Severe' });
+      }
+      // Vomiting / Stomach pain
+      if (/vomit|vaanthi|வாந்தி|வயிறு\s*வலி|vayiru/i.test(text)) {
+        symptoms.push({ name: 'Nausea / Abdominal Discomfort (வாந்தி / வயிறு வலி)', duration: '1 day', severity: 'Moderate' });
+      }
 
+      // Chronic Conditions
       const conditions = [];
-      if (/sugar|diabetes|நீரிழிவு/i.test(text)) conditions.push({ name: 'Type 2 Diabetes' });
-      if (/bp|hypertension|blood pressure/i.test(text)) conditions.push({ name: 'Hypertension' });
+      if (/sugar|diabetes|நீரிழிவு|சர்க்கரை|டயபெட்டீஸ்/i.test(text)) {
+        conditions.push({ name: 'Type 2 Diabetes (சர்க்கரை நோய்)' });
+      }
+      if (/bp|hypertension|blood\s*pressure|பிரஷர்|ரத்த\s*அழுத்தம்|இரத்த\s*அழுத்தம்|பிபி/i.test(text)) {
+        conditions.push({ name: 'Hypertension (ரத்த அழுத்தம்)' });
+      }
+      if (/asthma|ஆஸ்துமா|wheezing/i.test(text)) {
+        conditions.push({ name: 'Bronchial Asthma (ஆஸ்துமா)' });
+      }
 
+      // Medications (English + Tamil script)
       const medications = [];
-      if (/metformin/i.test(text)) medications.push({ name: 'Metformin', dosage: '500 mg', frequency: 'Twice daily', duration: '30 days' });
-      if (/amoxicillin/i.test(text)) medications.push({ name: 'Amoxicillin', dosage: '500 mg', frequency: 'Twice daily', duration: '5 days' });
-      if (/aspirin/i.test(text)) medications.push({ name: 'Aspirin', dosage: '75 mg', frequency: 'Once daily', duration: '30 days' });
-      if (/warfarin/i.test(text)) medications.push({ name: 'Warfarin', dosage: '2.5 mg', frequency: 'Once daily', duration: '30 days' });
-      if (/ibuprofen/i.test(text)) medications.push({ name: 'Ibuprofen', dosage: '400 mg', frequency: 'Twice daily', duration: '3 days' });
+      if (/metformin|மெட்ஃபோர்மின்|மெட்பார்மின்|கிளைகோமெட்/i.test(text)) {
+        medications.push({ name: 'Metformin HCl', dosage: '500 mg', frequency: 'Twice daily (after food)', duration: '30 days' });
+      }
+      if (/amoxicillin|amox|அமாக்சிசிலின்|அமாக்சிலின்|ஆக்மென்டின்/i.test(text)) {
+        medications.push({ name: 'Amoxicillin + Clavulanate', dosage: '625 mg', frequency: 'Twice daily', duration: '5 days' });
+      }
+      if (/paracetamol|dolo|crocin|calpol|பாராசிட்டமால்|டோலோ|கால்பால்/i.test(text)) {
+        medications.push({ name: 'Paracetamol (Dolo 650)', dosage: '650 mg', frequency: 'Thrice daily if fever >100°F', duration: '3 days' });
+      }
+      if (/pantoprazole|pan\s*40|பான்டோப்ராசோல்|பான்\s*40/i.test(text)) {
+        medications.push({ name: 'Pantoprazole', dosage: '40 mg', frequency: 'Once daily (morning empty stomach)', duration: '5 days' });
+      }
+      if (/aspirin|ecosprin|ஆஸ்பிரின்|எக்கோஸ்பிரின்/i.test(text)) {
+        medications.push({ name: 'Aspirin (Ecosprin)', dosage: '75 mg', frequency: 'Once daily', duration: '30 days' });
+      }
+      if (/warfarin|coumadin|வார்ஃபரின்|வார்ஃபாரின்/i.test(text)) {
+        medications.push({ name: 'Warfarin', dosage: '2.5 mg', frequency: 'Once daily', duration: '30 days' });
+      }
+      if (/ibuprofen|brufen|combiflam|ஐபூப்ரூஃபன்|ப்ரூஃபென்/i.test(text)) {
+        medications.push({ name: 'Ibuprofen', dosage: '400 mg', frequency: 'Twice daily', duration: '3 days' });
+      }
+      if (/asthalin|salbutamol|அஸ்தாலின்|இன்ஹேலர்/i.test(text)) {
+        medications.push({ name: 'Asthalin (Salbutamol)', dosage: '100 mcg', frequency: '2 puffs PRN', duration: '30 days' });
+      }
 
+      // Documented or Mentioned Allergies
       const allergies = [];
-      if (/penicillin/i.test(text)) allergies.push({ substance: 'Penicillin', reaction: 'Severe rash' });
+      if (/penicillin|பெனிசிலின்|பென்சிலின்/i.test(text)) {
+        allergies.push({ substance: 'Penicillin', reaction: 'Severe allergic anaphylaxis / rash' });
+      }
+      if (/sulfa|சல்ஃபா/i.test(text)) {
+        allergies.push({ substance: 'Sulfa', reaction: 'Stevens-Johnson Syndrome hazard' });
+      }
+
+      // If no symptom was matched yet but text is non-empty, provide an intelligent fallback summary
+      if (symptoms.length === 0 && text.trim().length > 3) {
+        symptoms.push({ name: 'Acute Clinical Symptoms Reported', duration: 'Recent onset', severity: 'Moderate' });
+      }
 
       const existingMeds = targetPatient.patientMedications.map((m) => m.medication.name);
       const existingAllergies = targetPatient.allergies.map((a) => a.substance);
       const prescribedMedNames = medications.map((m) => m.name);
 
-      const safetyEvaluation = evaluateSafety(prescribedMedNames, existingMeds, [...allergies.map((a) => a.substance), ...existingAllergies]);
+      const safetyEvaluation = evaluateSafety(
+        prescribedMedNames,
+        existingMeds,
+        [...allergies.map((a) => a.substance), ...existingAllergies]
+      );
 
       return json({
-        chiefComplaint: symptoms.map((s) => s.name).join(', ') || 'General consultation',
+        chiefComplaint: symptoms.map((s) => s.name).join(', ') || 'Clinical consultation recorded',
         symptoms,
         conditions,
         previousTreatments: [],
         medications,
         allergies,
-        relevantHistory: conditions.map((c) => `${c.name} reported by patient`),
+        relevantHistory: conditions.map((c) => `${c.name} documented in clinical record`),
         followUpQuestions: [
-          'What was the highest measured temperature?',
-          'Are any shortness of breath or chills also present?',
-          'Are there any known drug allergies or adverse reactions?',
+          'What was the highest measured temperature? (அதிகபட்ச உடல் வெப்பநிலை என்ன?)',
+          'Are chills, rigors, or breathing distress also present? (குளிர் அல்லது மூச்சு சிரமம் உள்ளதா?)',
+          'Are you experiencing any allergic rashes? (அலர்ஜி அல்லது அரிப்பு உள்ளதா?)',
         ],
         safetyEvaluation,
       });

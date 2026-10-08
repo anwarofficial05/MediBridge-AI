@@ -60,6 +60,7 @@ function recordFailedLogin(req: Request) {
   }
 }
 
+const router = Router();
 
 router.post('/register', async (req, res) => {
   const body = registerBody.parse(req.body);

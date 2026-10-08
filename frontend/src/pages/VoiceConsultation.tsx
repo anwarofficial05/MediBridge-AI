@@ -70,7 +70,7 @@ const CLINICAL_SCENARIOS = [
       { speaker: 'Patient', text: 'ஆமாம் டாக்டர், சுகருக்கு மெட்ஃபோர்மின் 500mg காலை மற்றும் இரவு உணவுக்கு அப்புறம் தொடர்ந்து சாப்பிடுறேன்.' },
     ],
     fullTranscript:
-      'Enakku moonu naala severe fever matrum cough irukku. Moochu vida konjam kashtama irukku. Enakku sugar irukku, Metformin 500mg twice daily tablet sapidren.',
+      'டாக்டர் எனக்கு 3 நாளா கடுமையான காய்ச்சல் மற்றும் இருமல் இருக்கு. மூச்சு திணறல் கொஞ்சம் இருக்கு. சர்க்கரை நோய்க்கு மெட்ஃபோர்மின் 500mg சாப்பிடுறேன். எனக்கு பெனிசிலின் அலர்ஜி இருக்கு.',
   },
   {
     id: 'scenario-ddi',
@@ -115,7 +115,7 @@ export default function VoiceConsultation() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
 
   const recognitionRef = useRef<any>(null);
-  const processedFinalIndexesRef = useRef<Set<number>>(new Set());
+  const baseTranscriptRef = useRef<string>('');
 
   // Load patient list
   useEffect(() => {
@@ -161,7 +161,7 @@ export default function VoiceConsultation() {
     setInterimText('');
   };
 
-  const startSpeech = () => {
+  const startSpeech = (overrideLang?: string) => {
     if (!supported) {
       setSpeechError('Speech recognition is not supported in this browser. You can use Simulated Encounter or text.');
       return;
@@ -170,15 +170,24 @@ export default function VoiceConsultation() {
       setSpeechError('Microphone speech recognition requires HTTPS or localhost.');
       return;
     }
-    if (listening) return;
+    if (listening) {
+      try {
+        recognitionRef.current?.abort?.();
+      } catch {}
+      setListening(false);
+    }
+
+    const activeLangName = overrideLang || language;
+    const bcp47 = langCodes[activeLangName] || 'ta-IN';
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SR();
-    recognition.lang = langCodes[language];
+    recognition.lang = bcp47;
     recognition.interimResults = true;
     recognition.continuous = true;
     recognition.maxAlternatives = 1;
-    processedFinalIndexesRef.current = new Set();
+
+    baseTranscriptRef.current = transcriptText.trim();
     setSpeechError('');
     setMicBlocked(false);
     setInterimText('');
@@ -190,28 +199,31 @@ export default function VoiceConsultation() {
     };
 
     recognition.onresult = (event: any) => {
-      const finalChunks: string[] = [];
-      const interimChunks: string[] = [];
+      let sessionFinal = '';
+      let sessionInterim = '';
       const confidenceValues: number[] = [];
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const alternative = result?.[0];
         const transcript = String(alternative?.transcript || '').trim();
         if (!transcript) continue;
+
         if (result.isFinal) {
-          if (processedFinalIndexesRef.current.has(i)) continue;
-          processedFinalIndexesRef.current.add(i);
-          finalChunks.push(transcript);
-          if (typeof alternative.confidence === 'number' && alternative.confidence > 0)
+          sessionFinal += (sessionFinal ? ' ' : '') + transcript;
+          if (typeof alternative?.confidence === 'number' && alternative.confidence > 0) {
             confidenceValues.push(alternative.confidence);
+          }
         } else {
-          interimChunks.push(transcript);
+          sessionInterim += (sessionInterim ? ' ' : '') + transcript;
         }
       }
-      if (finalChunks.length) {
-        setTranscriptText((prev) => `${prev.trim()}${prev.trim() ? ' ' : ''}${finalChunks.join(' ')}`.trim());
-      }
-      setInterimText(interimChunks.join(' '));
+
+      const base = baseTranscriptRef.current;
+      const combined = [base, sessionFinal].filter(Boolean).join(' ').trim();
+      setTranscriptText(combined);
+      setInterimText(sessionInterim);
+
       if (confidenceValues.length) {
         setSpeechConfidence(confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length);
       }
@@ -221,14 +233,14 @@ export default function VoiceConsultation() {
       const code = String(event?.error || 'unknown');
       if (code === 'not-allowed') {
         setMicBlocked(true);
-        setSpeechError('Microphone permission blocked in browser. Follow the 1-click unlock guide below or use Live Simulation.');
+        setSpeechError('Microphone permission blocked in browser. Follow the 1-click unlock guide below or use the quick sample buttons.');
+        setListening(false);
+        setInterimText('');
       } else if (code === 'no-speech') {
-        setSpeechError('No speech was detected. Speak closer to the microphone.');
+        // Transient silence during consultation pauses - keep stream open
       } else if (code !== 'aborted') {
         setSpeechError(`Speech recognition event: ${code}`);
       }
-      setListening(false);
-      setInterimText('');
     };
 
     recognition.onend = () => {
@@ -242,6 +254,16 @@ export default function VoiceConsultation() {
       recognition.start();
     } catch {
       setSpeechError('Unable to start speech recognition. Please check microphone permissions.');
+    }
+  };
+
+  const changeLanguage = (newLang: string) => {
+    setLanguage(newLang);
+    if (listening) {
+      stopSpeech();
+      setTimeout(() => {
+        startSpeech(newLang);
+      }, 150);
     }
   };
 
@@ -600,42 +622,129 @@ export default function VoiceConsultation() {
 
             {/* LIVE SPEECH RECOGNITION STATUS & TRANSCRIPT */}
             <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <label className="label text-xs">Full Clinical Transcript (Editable)</label>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="label text-xs font-bold text-slate-800">
+                  Full Clinical Transcript (Editable)
+                </label>
+
+                {/* LANGUAGE TOGGLE & MIC BUTTON */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5 shadow-xs">
+                    {(['Tamil', 'English', 'Hindi'] as const).map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => changeLanguage(l)}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition ${
+                          language === l
+                            ? 'bg-cyan-700 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
+                      >
+                        {l === 'Tamil' ? '🇮🇳 தமிழ் (ta-IN)' : l === 'English' ? '🇬🇧 English (en-IN)' : '🇮🇳 हिंदी'}
+                      </button>
+                    ))}
+                  </div>
+
                   <button
                     type="button"
-                    onClick={listening ? stopSpeech : startSpeech}
+                    onClick={listening ? stopSpeech : () => startSpeech()}
                     disabled={!supported || !secureContext}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition shadow-xs ${
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-black transition shadow-sm ${
                       listening
                         ? 'bg-rose-600 text-white animate-pulse'
-                        : 'bg-cyan-700 text-white hover:bg-cyan-800 disabled:bg-slate-300'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-slate-300'
                     }`}
                   >
                     {listening ? (
                       <>
-                        <Square className="h-3 w-3" /> Stop Listening
+                        <Square className="h-3.5 w-3.5 fill-white" /> Stop Mic
                       </>
                     ) : (
                       <>
-                        <Mic className="h-3 w-3" /> Live Mic
+                        <Mic className="h-3.5 w-3.5" /> Start Live Mic ({language === 'Tamil' ? 'தமிழ்' : language})
                       </>
                     )}
                   </button>
                 </div>
               </div>
 
+              {/* 1-CLICK CLINICAL SAMPLES FOR PRESENTATION */}
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-2 border border-slate-200">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Quick Insert:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      changeLanguage('Tamil');
+                      setTranscriptText('டாக்டர் எனக்கு 3 நாளா கடுமையான காய்ச்சல் மற்றும் இருமல் இருக்கு. மூச்சு திணறல் கொஞ்சம் இருக்கு. சர்க்கரை நோய்க்கு மெட்ஃபோர்மின் 500mg சாப்பிடுறேன். எனக்கு பெனிசிலின் அலர்ஜி இருக்கு.');
+                    }}
+                    className="rounded-md bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[11px] font-bold transition flex items-center gap-1 shadow-xs"
+                    title="Insert realistic Tamil patient consultation"
+                  >
+                    🇮🇳 தமிழ் பேச்சு மாதிரி (Tamil Case)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      changeLanguage('English');
+                      setTranscriptText('Patient reports severe sore throat, painful swallowing, and high fever for 3 days. Prescribed Amoxicillin 500mg twice daily. Patient has a documented history of severe allergic reaction and anaphylaxis to Penicillin.');
+                    }}
+                    className="rounded-md bg-white hover:bg-cyan-50 text-cyan-800 border border-cyan-300 px-2 py-0.5 text-[11px] font-bold transition flex items-center gap-1 shadow-xs"
+                    title="Insert English Penicillin allergy interception case"
+                  >
+                    🇬🇧 Penicillin Allergy Intercept
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTranscriptText('');
+                    setInterimText('');
+                  }}
+                  className="rounded-md bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 px-2 py-0.5 text-[11px] font-bold transition flex items-center gap-1 shadow-xs"
+                  title="Clear text box for pure live voice speaking"
+                >
+                  <Trash2 className="h-3 w-3" /> Clear Text
+                </button>
+              </div>
+
+              {/* LISTENING STATUS BANNER */}
               {listening && (
-                <div className="mt-2 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 border border-rose-200">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-rose-600" />
-                  Live listening in {language}... Speak clearly into the microphone.
+                <div className="mt-2.5 flex items-center justify-between rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-bold text-rose-800 border border-rose-300 animate-pulse">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />
+                    <span>Live listening in <b>{language} ({langCodes[language]})</b> — Speak clearly into mic.</span>
+                  </div>
+                  {speechConfidence !== null && (
+                    <span className="text-[11px] font-semibold text-rose-700">
+                      Confidence: {Math.round(speechConfidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* TAMIL NOTICE WHEN ACTIVE BUT NOT RECORDING */}
+              {!listening && language === 'Tamil' && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-teal-50/80 px-2.5 py-1 text-[11px] font-medium text-teal-800 border border-teal-200">
+                  <span className="font-bold">🇮🇳 Tamil Voice Recognition Active:</span> Spoken Tamil is transcribed directly into Tamil characters without stutter.
+                </div>
+              )}
+
+              {speechError && (
+                <div className="mt-2 rounded-xl bg-rose-50 p-2.5 text-xs font-semibold text-rose-700 border border-rose-200">
+                  ⚠️ {speechError}
                 </div>
               )}
 
               {interimText && (
-                <div className="mt-2 rounded-xl border border-cyan-200 bg-cyan-50/70 p-2.5 text-xs italic text-cyan-900">
-                  Interim: {interimText}
+                <div className="mt-2 rounded-xl border border-cyan-300 bg-cyan-50/80 p-2.5 text-xs text-cyan-950 font-medium">
+                  <span className="text-[10px] font-extrabold uppercase text-cyan-700 block mb-0.5">
+                    Live Recognition Stream:
+                  </span>
+                  {interimText}
                 </div>
               )}
 
@@ -643,7 +752,7 @@ export default function VoiceConsultation() {
                 className="input mt-2 min-h-24 resize-y text-xs leading-relaxed"
                 value={transcriptText}
                 onChange={(e) => setTranscriptText(e.target.value)}
-                placeholder="Speak into microphone or edit the encounter transcript..."
+                placeholder="Speak into microphone in Tamil or English, or click a Quick Insert button above..."
               />
             </div>
           </div>

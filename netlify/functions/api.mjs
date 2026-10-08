@@ -94,18 +94,25 @@ function evaluateSafety(prescribedMeds = [], existingMeds = [], allergies = []) 
     }
   }
 
-  for (const allergy of allergies) {
+  const seenAllergyAlerts = new Set();
+  const normalizedAllergies = [...new Set(allergies.map((a) => String(a || '').trim()).filter(Boolean))];
+
+  for (const allergy of normalizedAllergies) {
     for (const rule of ALLERGY_RULES) {
       if (rule.allergenClass.test(allergy)) {
         for (const med of prescribedMeds) {
           if (rule.triggers.some((rx) => rx.test(med))) {
-            allergyAlerts.push({
-              medication: med,
-              allergen: allergy,
-              severity: rule.severity,
-              clinicalEffect: rule.clinicalEffect,
-              recommendation: rule.recommendation,
-            });
+            const key = `${med}::${allergy}`.toLowerCase();
+            if (!seenAllergyAlerts.has(key)) {
+              seenAllergyAlerts.add(key);
+              allergyAlerts.push({
+                medication: med,
+                allergen: allergy,
+                severity: rule.severity,
+                clinicalEffect: rule.clinicalEffect,
+                recommendation: rule.recommendation,
+              });
+            }
           }
         }
       }

@@ -8,9 +8,12 @@ import { env } from '../utils/env.js';
 import { requireAuth, allowRoles } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 
-const router = Router();
 const email = z.string().trim().email().max(254);
-const loginCredentials = z.object({ email, password: z.string().min(1).max(128) });
+const loginCredentials = z.object({
+  email: z.string().trim().max(254).optional(),
+  username: z.string().trim().max(254).optional(),
+  password: z.string().min(1).max(128),
+});
 const registerBody = z.object({
   name: z.string().trim().min(2).max(100),
   email,
@@ -88,10 +91,37 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', loginRateLimit, async (req, res) => {
   const body = loginCredentials.parse(req.body);
-  const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() } });
+  let identifier = (body.username || body.email || '').trim().toLowerCase();
+  if (!identifier) {
+    return res.status(400).json({ message: 'Username or email is required' });
+  }
+
+  // Handle convenient username shortcuts
+  if (identifier === 'doctor') identifier = 'doctor@medibridge.ai';
+  else if (identifier === 'patient') identifier = 'patient@medibridge.ai';
+  else if (identifier === 'admin') identifier = 'admin@medibridge.ai';
+  else if (identifier === 'doctor2') identifier = 'doctor2@medibridge.ai';
+  else if (identifier === 'doctor3') identifier = 'doctor3@medibridge.ai';
+  else if (identifier.startsWith('mb-p-')) {
+    const p = await prisma.patient.findUnique({
+      where: { patientCode: identifier.toUpperCase() },
+      include: { user: true },
+    });
+    if (p?.user?.email) identifier = p.user.email;
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { email: identifier },
+        { name: { equals: identifier, mode: 'insensitive' } },
+      ],
+    },
+  });
+
   if (!user || !user.isActive || !(await bcrypt.compare(body.password, user.passwordHash))) {
     recordFailedLogin(req);
-    return res.status(401).json({ message: 'Invalid email or password' });
+    return res.status(401).json({ message: 'Invalid username/email or password' });
   }
   loginAttempts.delete(req.ip || 'unknown');
   const token = jwt.sign({ sub: user.id, role: user.role }, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as any });

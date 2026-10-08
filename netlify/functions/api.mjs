@@ -278,12 +278,17 @@ export default async function handler(req, context) {
     // 2. Auth: Login
     if (path === '/auth/login' && req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
-      const email = String(body.email || '').trim().toLowerCase();
-      const user = DEMO_USERS[email] || {
+      let identifier = String(body.username || body.email || '').trim().toLowerCase();
+      if (identifier === 'doctor') identifier = 'doctor@medibridge.ai';
+      if (identifier === 'patient') identifier = 'patient@medibridge.ai';
+      if (identifier === 'admin') identifier = 'admin@medibridge.ai';
+      if (identifier === 'mb-p-1001') identifier = 'patient@medibridge.ai';
+
+      const user = DEMO_USERS[identifier] || {
         id: 'usr-auto',
-        name: email.split('@')[0] || 'Demo User',
-        email,
-        role: email.includes('doc') ? 'DOCTOR' : email.includes('admin') ? 'ADMIN' : 'PATIENT',
+        name: identifier.split('@')[0] || 'Demo User',
+        email: identifier.includes('@') ? identifier : `${identifier}@medibridge.ai`,
+        role: identifier.includes('doc') ? 'DOCTOR' : identifier.includes('admin') ? 'ADMIN' : 'PATIENT',
         patientId: 'pat-1001',
       };
       return json({ token: 'mb_demo_token_' + Date.now(), user });

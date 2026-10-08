@@ -4,7 +4,7 @@ import type { User } from '../types';
 
 type AuthContextType = {
   user: User | null; loading: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  login: (identifier: string, password: string) => Promise<User>;
   register: (input: { name: string; email: string; password: string; preferredLanguage?: string }) => Promise<User>;
   logout: () => void;
 };
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     user, loading,
-    login: async (email: string, password: string) => authFromResponse(await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })),
+    login: async (identifier: string, password: string) => authFromResponse(await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: identifier, username: identifier, password }) })),
     register: async (input: { name: string; email: string; password: string; preferredLanguage?: string }) => authFromResponse(await api('/auth/register', { method: 'POST', body: JSON.stringify(input) })),
     logout: clearAuth,
   }), [user, loading]);
